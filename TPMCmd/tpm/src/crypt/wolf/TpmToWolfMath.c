@@ -105,8 +105,8 @@ void BnToWolf(mp_int* toInit, bigConst initializer)
         for(i = 0; i < initializer->size; i++)
         {
 #  if WOLF_HALF_RADIX
-            toInit->dp[2 * i]     = (fp_digit)initializer->d[i];
-            toInit->dp[2 * i + 1] = (fp_digit)(initializer->d[i] >> 32);
+            toInit->dp[2 * i]     = (mp_digit)initializer->d[i];
+            toInit->dp[2 * i + 1] = (mp_digit)(initializer->d[i] >> 32);
 #  else
             toInit->dp[i] = initializer->d[i];
 #  endif
@@ -160,9 +160,9 @@ BOOL MathLibraryCompatibilityCheck(void)
     // Convert the test TPM2B to a bigNum
     BnFrom2B(tpmTemp, &test.b);
     MP_INITIALIZED(wolfTemp, tpmTemp);
-    (wolfTemp);  // compiler warning
+    (void)(wolfTemp);  // compiler warning
     // Make sure the values are consistent
-    VERIFY(wolfTemp->used * sizeof(fp_digit)
+    VERIFY(wolfTemp->used * sizeof(mp_digit)
            == (int)tpmTemp->size * sizeof(crypt_uword_t));
     for(i = 0; i < tpmTemp->size; i++)
         VERIFY(((crypt_uword_t*)wolfTemp->dp)[i] == tpmTemp->d[i]);

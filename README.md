@@ -51,6 +51,31 @@ Note that autotools scripts require the following prerequisite packages: `autoco
 
 Similarly to the Windows build, if you enable SM{2,3,4} algorithms in `TpmProfile.h`, the build may fail because of missing `SM{2,3,4}.h` headers. In this case you will need to manually copy them over from OpenSSL's `include/crypt` folder.
 
+### Building with wolfSSL
+
+Note that wolfSSL make install uses the package: `libtools` in additions to the previous autoconf packages listed.
+
+For building with wolfSSL on Linux download the wolfSSL (https://www.wolfssl.com/downloads) and build wolfSSL using the following commands:
+
+```
+./configure --enable-aesctr --disable-oldnames CPPFLAGS="-DWOLFSSL_SP_INT_NEGATIVE -DWOLFSSL_AES_DIRECT -DWOLFSSL_PUBLIC_MP -DWOLFSSL_PUBLIC_ECC_ADD_DBL" --enable-keygen
+make
+make install
+```
+
+For pkg-config to find the wolfSSL .pc file the PKG_CONFIG_PATH may need updated:
+
+```
+export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig/
+```
+
+Then build ms-tpm-20-ref linking to the install wolfSSL library using:
+
+```
+./configure --with-wolfssl
+make
+```
+
 ## Mac OS X build
 
 As with the Linux build, use `./bootstrap`, `./configure`, and `make`.

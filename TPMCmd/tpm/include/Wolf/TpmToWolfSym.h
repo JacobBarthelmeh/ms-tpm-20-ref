@@ -44,6 +44,10 @@
 
 #define SYM_ALIGNMENT RADIX_BYTES
 
+#ifndef WOLFSSL_USER_SETTINGS
+    #include <wolfssl/options.h>
+#endif
+
 #include <wolfssl/wolfcrypt/aes.h>
 #include <wolfssl/wolfcrypt/des3.h>
 

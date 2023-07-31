@@ -51,16 +51,39 @@ AC_ARG_ENABLE(usedeviceid,
     AS_HELP_STRING([--enable-usedeviceid],
     [tpm simulator get seeds derived from hardware parameters. Seeds are not derived from secure hardware source.]))
 
-PKG_CHECK_MODULES([LIBCRYPTO], [libcrypto])
+AC_ARG_WITH([wolfssl],
+    [AS_HELP_STRING([--with-wolfssl=PATH],[PATH to wolfssl install])],
+    [WOLFSSL_DIR=$withval],
+    [WOLFSSL_DIR=""])
+
+
+AS_IF([test "x$WOLFSSL_DIR" = "x"], [
+    PKG_CHECK_MODULES([LIBCRYPTO], [libcrypto])
+],
+[
+    PKG_CHECK_MODULES([LIBCRYPTO], [wolfssl])
+    AC_DEFINE([HASH_LIB], [Wolf], [Crypto lib for hash algorithms])
+    AC_DEFINE([SYM_LIB], [Wolf], [Crypto lib for symmetric encryption algorithms])
+    AC_DEFINE([MATH_LIB], [Wolf], [Crypto lib for bignum operations])
+])
+
 AS_IF([test "x$enable_usedeviceid" = "xyes"], [
     PKG_CHECK_MODULES([LIBUDEV], [libudev])
     [ADDITIONAL_LIBS="-ludev"]
 ])
-AX_PTHREAD([], [AC_MSG_ERROR([requires pthread])])
 
-AC_DEFINE([HASH_LIB], [Ossl], [Crypto lib for hash algorithms])
-AC_DEFINE([SYM_LIB], [Ossl], [Crypto lib for symmetric encryption algorithms])
-AC_DEFINE([MATH_LIB], [Ossl], [Crypto lib for bignum operations])
+AC_ARG_ENABLE(uart,
+    AS_HELP_STRING([--enable-uart],
+    [tpm simulator uses uart server instead of tcp.]))
+AS_IF([test "x$enable_uart" != "xyes"], [
+    AX_PTHREAD([], [AC_MSG_ERROR([requires pthread])])
+])
+
+AS_IF([test "x$WOLFSSL_DIR" = "x"], [
+    AC_DEFINE([HASH_LIB], [Ossl], [Crypto lib for hash algorithms])
+    AC_DEFINE([SYM_LIB], [Ossl], [Crypto lib for symmetric encryption algorithms])
+    AC_DEFINE([MATH_LIB], [Ossl], [Crypto lib for bignum operations])
+])
 
 ADD_COMPILER_FLAG([-std=gnu11])
 ADD_COMPILER_FLAG([-Werror])

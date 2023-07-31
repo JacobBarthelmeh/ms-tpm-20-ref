@@ -49,7 +49,11 @@
 #  define HAVE_ECC
 #endif
 
-#include <wolfssl/wolfcrypt/tfm.h>
+#ifndef WOLFSSL_USER_SETTINGS
+    #include <wolfssl/options.h>
+#endif
+
+#include <wolfssl/wolfcrypt/wolfmath.h>
 #include <wolfssl/wolfcrypt/ecc.h>
 
 #define MP_VAR(name) \
