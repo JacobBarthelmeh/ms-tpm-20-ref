@@ -53,6 +53,9 @@
 #elif defined(__unix__) || defined(__APPLE__)
 #  define _strcmpi strcasecmp
 typedef int SOCKET;
+#elif defined(__MICROBLAZE__)
+#include "xuartns550.h"
+#define SOCKET XUartNs550*
 #else
 #  error "Unsupported platform."
 #endif
@@ -62,11 +65,12 @@ typedef int SOCKET;
 #include "Platform_fp.h"
 #include "Simulator_fp.h"
 
+#define DEFAULT_TPM_PORT 2321
+#ifndef NO_SIMULATION_ARGS 
 #define PURPOSE                    \
   "TPM 2.0 Reference Simulator.\n" \
   "Copyright (c) Microsoft Corporation. All rights reserved."
 
-#define DEFAULT_TPM_PORT 2321
 
 // Information about command line arguments (does not include program name)
 static uint32_t     s_ArgsMask = 0;  // Bit mask of unmatched command line args
@@ -212,6 +216,7 @@ static void CmdLineParser_Done(const char* programName)
     fprintf(stderr, "\n\n");
     Usage(programName);
 }
+#endif // !NO_SIMULATION_ARGS
 
 //*** main()
 // This is the main entry point for the simulator.
@@ -222,7 +227,11 @@ int main(int argc, char* argv[])
     int  PortNum     = DEFAULT_TPM_PORT;
 
     // Parse command line options
+#if defined(USE_UART_TRANSPORT) || defined(LINUX_UART)
+    manufacture = true;
+#endif
 
+#ifndef NO_SIMULATION_ARGS 
     if(CmdLineParser_Init(argc, argv, 2))
     {
         if(CmdLineParser_IsOptPresent("?", "?")
@@ -259,12 +268,13 @@ int main(int argc, char* argv[])
     }
     printf("LIBRARY_COMPATIBILITY_CHECK is %s\n",
            (LIBRARY_COMPATIBILITY_CHECK ? "ON" : "OFF"));
+#endif // !NO_SIMULATION_ARGS
+
     // Enable NV memory
     _plat__NVEnable(NULL);
 
     if(manufacture || _plat__NVNeedsManufacture())
     {
-        printf("Manufacturing NV state...\n");
         if(TPM_Manufacture(1) != 0)
         {
             // if the manufacture didn't work, then make sure that the NV file doesn't
@@ -288,6 +298,10 @@ int main(int argc, char* argv[])
     // Disable NV memory
     _plat__NVDisable(0);
 
+#if defined(USE_UART_TRANSPORT) || defined(LINUX_UART)
+    StartUartServer();
+#else
     StartTcpServer(PortNum);
+#endif
     return EXIT_SUCCESS;
 }

@@ -42,35 +42,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 
-/* #define USE_UART_TRANSPORT */
-
-#ifdef USE_UART_TRANSPORT
-    #ifndef TPM2_SWTPM_HOST
-    #define TPM2_SWTPM_HOST "/dev/ttyUSB0"
-    #endif
-    #ifndef TPM2_SWTPM_BAUD
-    #define TPM2_SWTPM_BAUD 115200
-    #endif
-    #ifndef TPM2_TIMEOUT_SECONDS
-    #define TPM2_TIMEOUT_SECONDS    60
-    #endif
-
-    #if defined(__unix__) || defined(__APPLE__)
-        #define _XOPEN_SOURCE 600
-        #include <netdb.h>
-        #include <sys/socket.h>         /* used for all socket calls */
-        #include <netinet/in.h>         /* used for sockaddr_in6 */
-        #include <arpa/inet.h>
-        #include <fcntl.h>
-        #include <sys/stat.h>
-        #include <termios.h>
-        #include <signal.h>
-        #include <errno.h>
-    #else
-        #error UART transport not supported
-    #endif
-#endif
-
+#ifndef USE_UART_TRANSPORT
 #ifdef _MSC_VER
 #  pragma warning(push, 3)
 #  include <windows.h>
@@ -125,43 +97,7 @@ struct
 
 #endif  // __IGNORE_STATE___
 
-
 //** Functions
-
-#ifdef USE_UART_TRANSPORT
-
-//*** CreateUART()
-// This function creates a UART device
-static int CreateUART(SOCKET* listenUART, const char* dev, uint32_t baud)
-{
-    struct termios tty;
-    /* Open UART file descriptor */
-    *listenUART = open(dev, O_RDWR | O_NOCTTY);
-    if (*listenUART < 0) {
-        printf("Error opening %s: Error %i (%s)\n",
-            dev, errno, strerror(errno));
-        return -1;
-    }
-    tcgetattr(*listenUART, &tty);
-    cfsetospeed(&tty, baud);
-    cfsetispeed(&tty, baud);
-    tty.c_cflag = (tty.c_cflag & ~CSIZE) | (CS8);
-    tty.c_iflag &= ~(IGNBRK | IXON | IXOFF | IXANY| INLCR | ICRNL);
-    tty.c_oflag &= ~OPOST;
-    tty.c_oflag &= ~(ONLCR|OCRNL);
-    tty.c_cflag &= ~(PARENB | PARODD | CSTOPB);
-    tty.c_lflag &= ~(ICANON | ECHO | ECHOE | ISIG);
-    tty.c_iflag &= ~ISTRIP;
-    tty.c_cc[VMIN] = 0;
-    tty.c_cc[VTIME] = 5;
-    tcsetattr(*listenUART, TCSANOW, &tty);
-
-    /* Flush any data in the RX buffer */
-    tcflush(*listenUART, TCIOFLUSH);
-
-    return 0;
-}
-#endif
 
 //*** CreateSocket()
 // This function creates a socket listening on 'PortNumber'.
@@ -169,7 +105,6 @@ static int CreateSocket(int PortNumber, SOCKET* listenSocket)
 {
     struct sockaddr_in MyAddress;
     int                res;
-
 //
 // Initialize Winsock
 #ifdef _MSC_VER
@@ -181,7 +116,6 @@ static int CreateSocket(int PortNumber, SOCKET* listenSocket)
         return -1;
     }
 #endif
-
     // create listening socket
     *listenSocket = socket(PF_INET, SOCK_STREAM, 0);
     if(INVALID_SOCKET == *listenSocket)
@@ -192,7 +126,6 @@ static int CreateSocket(int PortNumber, SOCKET* listenSocket)
     }
     // bind the listening socket to the specified port
     ZeroMemory(&MyAddress, sizeof(MyAddress));
-    MyAddress.sin_addr.s_addr = INADDR_ANY;
     MyAddress.sin_port   = htons((short)PortNumber);
     MyAddress.sin_family = AF_INET;
 
@@ -382,33 +315,6 @@ int PlatformSignalService(int PortNumber)
 #endif  // _MSC_VER
 }
 
-#ifdef USE_UART_TRANSPORT
-int RegularCommandService(int PortNumber)
-{
-    int res;
-    SOCKET listenUART;
-    bool continueServing;
-
-    res = CreateUART(&listenUART, TPM2_SWTPM_HOST, TPM2_SWTPM_BAUD);
-    if(res != 0)
-    {
-        printf("Create command service transport fail\n");
-        return res;
-    }
-
-    do
-    {
-        printf("TPM command server listening on interface %s\n", TPM2_SWTPM_HOST);
-
-        // normal behavior on client disconnection is to wait for a new client
-        // to connect
-        continueServing = TpmServer(listenUART);
-    } while(continueServing);
-    close(listenUART);
-    (void)PortNumber;
-    return 0;
-}
-#else
 //*** RegularCommandService()
 // This function services regular commands.
 int RegularCommandService(int PortNumber)
@@ -423,7 +329,7 @@ int RegularCommandService(int PortNumber)
     res = CreateSocket(PortNumber, &listenSocket);
     if(res != 0)
     {
-        printf("Create command service socket fail\n");
+        printf("Create platform service socket fail\n");
         return res;
     }
     // Loop accepting connections one-by-one until we are killed or asked to stop
@@ -450,7 +356,6 @@ int RegularCommandService(int PortNumber)
     } while(continueServing);
     return 0;
 }
-#endif /* USE_UART_TRANSPORT */
 
 #if RH_ACT_0
 
@@ -581,42 +486,6 @@ int StartTcpServer(int PortNumber)
     return 0;
 }
 
-#define LINE_LEN 16
-static void TPM2_PrintBin(const uint8_t* buffer, uint32_t length)
-{
-    uint32_t i, sz;
-
-    if (!buffer) {
-        printf("\tNULL");
-        return;
-    }
-
-    while (length > 0) {
-        sz = length;
-        if (sz > LINE_LEN)
-            sz = LINE_LEN;
-
-        printf("\t");
-        for (i = 0; i < LINE_LEN; i++) {
-            if (i < length)
-                printf("%02x ", buffer[i]);
-            else
-                printf("   ");
-        }
-        printf("| ");
-        for (i = 0; i < sz; i++) {
-            if (buffer[i] > 31 && buffer[i] < 127)
-                printf("%c", buffer[i]);
-            else
-                printf(".");
-        }
-        printf("\r\n");
-
-        buffer += sz;
-        length -= sz;
-    }
-}
-
 //*** ReadBytes()
 // This function reads the indicated number of bytes ('NumBytes') into buffer
 // from the indicated socket.
@@ -624,26 +493,10 @@ bool ReadBytes(SOCKET s, char* buffer, int NumBytes)
 {
     int res;
     int numGot = 0;
-    fd_set rfds;
-    struct timeval tv = { TPM2_TIMEOUT_SECONDS, 0};
-
-    FD_ZERO(&rfds);
-    FD_SET(s, &rfds);
-    printf("Read %d\n", NumBytes);
-
     //
     while(numGot < NumBytes)
     {
-        /* use select to wait for data */
-        res = select(s + 1, &rfds, NULL, NULL, &tv);
-        printf("select res %d\n", res);
-        if (res == 0) {
-            printf("Receive timeout\n");
-            return false; /* timeout */
-        }
-
-        res = read(s, buffer + numGot, NumBytes - numGot);
-        printf("Read asked %d, got %d\n", NumBytes - numGot, res);
+        res = recv(s, buffer + numGot, NumBytes - numGot, 0);
         if(res == -1)
         {
             printf("Receive error.  Error is 0x%x\n", WSAGetLastError());
@@ -651,12 +504,8 @@ bool ReadBytes(SOCKET s, char* buffer, int NumBytes)
         }
         if(res == 0)
         {
-        #ifdef USE_UART_TRANSPORT
-            continue; /* keep trying to read bytes */
-        #endif
             return false;
         }
-        TPM2_PrintBin((const uint8_t*)(buffer + numGot), res);
         numGot += res;
     }
     return true;
@@ -672,7 +521,7 @@ bool WriteBytes(SOCKET s, char* buffer, int NumBytes)
     //
     while(numSent < NumBytes)
     {
-        res = write(s, buffer + numSent, NumBytes - numSent);
+        res = send(s, buffer + numSent, NumBytes - numSent, 0);
         if(res == -1)
         {
             if(WSAGetLastError() == 0x2745)
@@ -861,3 +710,5 @@ bool TpmServer(SOCKET s)
             return true;
     }
 }
+#endif // USE_UART_TRANSPORT
+

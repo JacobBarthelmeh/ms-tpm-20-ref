@@ -464,7 +464,7 @@ BOOL CryptStartup(STARTUP_TYPE type  // IN: the startup type
     BOOL OK;
     NOT_REFERENCED(type);
 
-    OK = CryptSymStartup() && CryptRandStartup() && CryptHashStartup()
+    OK = CryptSymStartup() && CryptHashStartup() && CryptRandStartup()
 #if ALG_RSA
          && CryptRsaStartup()
 #endif  // ALG_RSA
@@ -916,6 +916,7 @@ void CryptParameterEncryption(
                             nonceCaller,
                             (UINT32)cipherSize,
                             buffer);
+#if ALG_AES
     else
         ParmEncryptSym(session->symmetric.algorithm,
                        session->authHashAlg,
@@ -925,6 +926,7 @@ void CryptParameterEncryption(
                        &(session->nonceTPM.b),
                        (UINT32)cipherSize,
                        buffer);
+#endif
     return;
 }
 

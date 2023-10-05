@@ -98,8 +98,8 @@ EXTERN unsigned char s_locality;
 #endif
 
 #if SIMULATION
-#  undef FILE_BACKED_NV
-#  define FILE_BACKED_NV YES
+//#  undef FILE_BACKED_NV
+//#  define FILE_BACKED_NV YES
 #endif  // SIMULATION
 
 EXTERN unsigned char s_NV[NV_MEMORY_SIZE];

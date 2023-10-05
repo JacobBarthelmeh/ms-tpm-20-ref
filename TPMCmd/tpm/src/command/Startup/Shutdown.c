@@ -36,6 +36,7 @@
 #include "Shutdown_fp.h"
 
 #if CC_Shutdown  // Conditional expansion of this file
+extern unsigned char controlFlowOff;
 
 /*(See part 3 specification)
 // Shut down TPM for power off
@@ -104,6 +105,7 @@ TPM2_Shutdown(Shutdown_In* in  // IN: input parameter list
 
     NV_SYNC_PERSISTENT(orderlyState);
 
+    controlFlowOff = 1; /* use acks for control flow */
     return TPM_RC_SUCCESS;
 }
 #endif  // CC_Shutdown

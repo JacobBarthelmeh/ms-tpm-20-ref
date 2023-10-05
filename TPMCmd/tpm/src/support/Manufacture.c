@@ -62,13 +62,15 @@ LIB_EXPORT int TPM_Manufacture(
 #if RUNTIME_SIZE_CHECKS
     // Call the function to verify the sizes of values that result from different
     // compile options.
-    if(!TpmSizeChecks())
+    if(!TpmSizeChecks()) {
         return -1;
+    }
 #endif
 #if LIBRARY_COMPATIBILITY_CHECK
     // Make sure that the attached library performs as expected.
-    if(!MathLibraryCompatibilityCheck())
+    if(!MathLibraryCompatibilityCheck()) {
         return -1;
+    }
 #endif
 
     // If TPM has been manufactured, return indication.
@@ -83,8 +85,10 @@ LIB_EXPORT int TPM_Manufacture(
     // initialize NV
     NvManufacture();
 
+#ifndef USE_WOLFSSL_DRBG
     // Clear the magic value in the DRBG state
     go.drbgState.magic = 0;
+#endif
 
     CryptStartup(SU_RESET);
 

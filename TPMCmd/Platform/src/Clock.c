@@ -78,7 +78,7 @@ LIB_EXPORT void _plat__TimerRestart(void)
 // These functions are called by the TPM code. They should be replaced by
 // appropriated hardware functions.
 
-#include <time.h>
+//#include <time.h>
 clock_t debugTime;
 
 //*** _plat__RealTime()
@@ -86,7 +86,7 @@ clock_t debugTime;
 // that will return a 64-bit clock value that has mSec resolution.
 LIB_EXPORT uint64_t _plat__RealTime(void)
 {
-    clock64_t time;
+    clock64_t time = 0;
 #ifdef _MSC_VER
     struct _timeb sysTime;
     //
@@ -97,10 +97,10 @@ LIB_EXPORT uint64_t _plat__RealTime(void)
         time -= 1000 * 60 * 60;  // mSec/sec * sec/min * min/hour = ms/hour
 #else
     // hopefully, this will work with most UNIX systems
-    struct timespec systime;
+//    struct timespec systime;
     //
-    clock_gettime(CLOCK_MONOTONIC, &systime);
-    time = (clock64_t)systime.tv_sec * 1000 + (systime.tv_nsec / 1000000);
+//    clock_gettime(CLOCK_MONOTONIC, &systime);
+//    time = (clock64_t)systime.tv_sec * 1000 + (systime.tv_nsec / 1000000);
 #endif
     return time;
 }

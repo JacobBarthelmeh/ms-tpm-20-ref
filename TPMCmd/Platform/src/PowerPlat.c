@@ -44,7 +44,7 @@
 LIB_EXPORT int _plat__Signal_PowerOn(void)
 {
     // Reset the timer
-    _plat__TimerReset();
+//    _plat__TimerReset();
 
     // Need to indicate that we lost power
     s_powerLost = TRUE;

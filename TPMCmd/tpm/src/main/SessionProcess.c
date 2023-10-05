@@ -592,6 +592,9 @@ static TPM2B_DIGEST* ComputeCpHash(COMMAND* command,  // IN: command parsing str
     // an audit session.
     // Get pointer to the hash value
     cpHash = GetCpHashPointer(command, hashAlg);
+    if (cpHash == NULL) {
+	return cpHash;
+    }
     if(cpHash->t.size == 0)
     {
         cpHash->t.size = CryptHashStart(&hashState, hashAlg);

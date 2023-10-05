@@ -72,6 +72,111 @@
 
 #include "Tpm.h"
 
+#ifdef USE_WOLFSSL_DRBG
+#ifndef WOLFSSL_USER_SETTINGS
+#include <wolfssl/options.h>
+#endif
+#include <wolfssl/wolfcrypt/random.h>
+
+LIB_EXPORT TPM_RC DRBG_Uninstantiate(
+    DRBG_STATE* drbgState  // IN/OUT: working state to erase
+)
+{
+    wc_FreeRng(drbgState);
+    return TPM_RC_SUCCESS;
+}
+
+
+LIB_EXPORT BOOL DRBG_Instantiate(
+    DRBG_STATE* drbgState,       // OUT: the instantiated value
+    UINT16      pSize,           // IN: Size of personalization string
+    BYTE*       personalization  // IN: The personalization string
+)
+{
+    if (wc_InitRng(drbgState) == 0) {
+        return TRUE;
+    }
+    return FALSE;
+}
+
+LIB_EXPORT UINT16 DRBG_Generate(
+    RAND_STATE* state,
+    BYTE*       random,     // OUT: buffer to receive the random values
+    UINT16      randomSize  // IN: the number of bytes to generate
+)
+{
+    int rc;
+
+    if (state == NULL)
+        state = (RAND_STATE*)&drbgDefault;
+    if (random == NULL)
+        return 0;
+
+
+    rc = wc_RNG_GenerateBlock(&state->drbg, random, randomSize);
+    if (rc == 0) {
+        return randomSize;
+    }
+    return 0;
+}
+
+LIB_EXPORT BOOL CryptRandInit(void)
+{
+    return TRUE;
+}
+
+LIB_EXPORT BOOL CryptRandStartup(void)
+{
+    return DRBG_Instantiate(&drbgDefault, 0, NULL);
+}
+
+LIB_EXPORT TPM_RC DRBG_InstantiateSeeded(
+    DRBG_STATE*  drbgState,  // IN/OUT: buffer to hold the state
+    const TPM2B* seed,       // IN: the seed to use
+    const TPM2B* purpose,    // IN: a label for the generation process.
+    const TPM2B* name,       // IN: name of the object
+    const TPM2B* additional  // IN: additional data
+)
+{
+    if (wc_InitRngNonce(drbgState, seed->buffer, seed->size) == 0) {
+        return TPM_RC_SUCCESS;
+    }
+    return TPM_RC_FAILURE;
+}
+
+LIB_EXPORT void DRBG_AdditionalData(DRBG_STATE* drbgState,  // IN:OUT state to update
+                                    TPM2B* additionalData  // IN: value to incorporate
+)
+{
+}
+
+
+//*** DRBG_InstantiateSeededKdf()
+// This function is used to instantiate a KDF-based RNG. This is used for derivations.
+// This function always returns TRUE.
+LIB_EXPORT BOOL DRBG_InstantiateSeededKdf(
+    KDF_STATE*   state,    // OUT: buffer to hold the state
+    TPM_ALG_ID   hashAlg,  // IN: hash algorithm
+    TPM_ALG_ID   kdf,      // IN: the KDF to use
+    TPM2B*       seed,     // IN: the seed to use
+    const TPM2B* label,    // IN: a label for the generation process.
+    TPM2B*       context,  // IN: the context value
+    UINT32       limit     // IN: Maximum number of bits from the KDF
+)
+{
+    return TRUE;
+}
+
+LIB_EXPORT UINT16 CryptRandomGenerate(UINT16 randomSize, BYTE* buffer)
+{
+    return DRBG_Generate((RAND_STATE*)&drbgDefault, buffer, randomSize);
+}
+
+LIB_EXPORT TPM_RC CryptRandomStir(UINT16 additionalDataSize, BYTE* additionalData)
+{
+    return TPM_RC_SUCCESS;
+}
+#else
 // Pull in the test vector definitions and define the space
 #include "PRNG_TestVectors.h"
 
@@ -407,6 +512,9 @@ static BOOL DRBG_Update(
     DRBG_SEED*         providedData  // IN: additional data
 )
 {
+#ifdef USE_UNSAFE_DRBG
+    return TRUE;
+#else
     UINT32            i;
     BYTE*             temp = (BYTE*)&drbgState->seed;
     DRBG_KEY*         key  = pDRBG_KEY(&drbgState->seed);
@@ -437,6 +545,7 @@ static BOOL DRBG_Update(
     // Since temp points to the input key and IV, we are done and
     // don't need to copy the resulting 'temp' to drbgState->seed
     return TRUE;
+#endif
 }
 
 //*** DRBG_Reseed()
@@ -452,6 +561,9 @@ BOOL DRBG_Reseed(DRBG_STATE* drbgState,        // IN: the state to update
                  DRBG_SEED*  additionalData    // IN:
 )
 {
+#ifdef USE_UNSAFE_DRBG
+    return TRUE;
+#else
     DRBG_SEED seed;
 
     pAssert((drbgState != NULL) && (drbgState->magic == DRBG_MAGIC));
@@ -475,6 +587,7 @@ BOOL DRBG_Reseed(DRBG_STATE* drbgState,        // IN: the state to update
     drbgState->reseedCounter = 1;
 
     return TRUE;
+#endif
 }
 
 //*** DRBG_SelfTest()
@@ -485,6 +598,9 @@ BOOL DRBG_Reseed(DRBG_STATE* drbgState,        // IN: the state to update
 //      FALSE(0)        test failed
 BOOL DRBG_SelfTest(void)
 {
+#ifdef USE_UNSAFE_DRBG
+    return TRUE;
+#else
     BYTE       buf[sizeof(DRBG_NistTestVector_Generated)];
     DRBG_SEED  seed;
     UINT32     i;
@@ -545,6 +661,7 @@ BOOL DRBG_SelfTest(void)
     ClearEntropyBad();
 
     return TRUE;
+#endif
 }
 
 //** Public Interface
@@ -575,6 +692,10 @@ LIB_EXPORT TPM_RC CryptRandomStir(UINT16 additionalDataSize, BYTE* additionalDat
 
     return TPM_RC_SUCCESS;
 
+#elif defined(USE_UNSAFE_DRBG)
+    /* No action with unsafe DRBG for testing and fuzzing */
+    return TPM_RC_SUCCESS;
+
 #else
     // If doing debug, use the input data as the initial setting for the RNG state
     // so that the test can be reset at any time.
@@ -602,7 +723,15 @@ LIB_EXPORT TPM_RC CryptRandomStir(UINT16 additionalDataSize, BYTE* additionalDat
 // Generate a 'randomSize' number or random bytes.
 LIB_EXPORT UINT16 CryptRandomGenerate(UINT16 randomSize, BYTE* buffer)
 {
+#ifdef USE_UNSAFE_DRBG
+	//just for testing and fuzzing
+	static int i;
+	int j;
+	for (j = 0; j < randomSize; j++) buffer[j] = i++;
+	return j;		
+#else
     return DRBG_Generate((RAND_STATE*)&drbgDefault, buffer, randomSize);
+#endif
 }
 
 //*** DRBG_InstantiateSeededKdf()
@@ -618,6 +747,7 @@ LIB_EXPORT BOOL DRBG_InstantiateSeededKdf(
     UINT32       limit     // IN: Maximum number of bits from the KDF
 )
 {
+#ifndef USE_UNSAFE_DRBG
     state->magic           = KDF_MAGIC;
     state->limit           = limit;
     state->seed            = seed;
@@ -628,6 +758,7 @@ LIB_EXPORT BOOL DRBG_InstantiateSeededKdf(
     state->digestSize      = CryptHashGetDigestSize(hashAlg);
     state->counter         = 0;
     state->residual.t.size = 0;
+#endif
     return TRUE;
 }
 
@@ -662,6 +793,7 @@ LIB_EXPORT TPM_RC DRBG_InstantiateSeeded(
     const TPM2B* additional  // IN: additional data
 )
 {
+#ifndef USE_UNSAFE_DRBG
     DF_STATE dfState;
     int      totalInputSize;
     // DRBG should have been tested, but...
@@ -696,7 +828,7 @@ LIB_EXPORT TPM_RC DRBG_InstantiateSeeded(
     // Used the derivation function output as the "entropy" input. This is not
     // how it is described in SP800-90A but this is the equivalent function
     DRBG_Reseed(((DRBG_STATE*)drbgState), DfEnd(&dfState), NULL);
-
+#endif
     return TPM_RC_SUCCESS;
 }
 
@@ -751,6 +883,15 @@ LIB_EXPORT UINT16 DRBG_Generate(
     if(random == NULL)
         return 0;
 
+#ifdef USE_UNSAFE_DRBG
+    static int t = 0;
+    int j;
+
+    for (j = 0; j < randomSize; j++) {
+         random[j] = t++;
+    }
+
+#else
     // If the caller used a KDF state, generate a sequence from the KDF not to
     // exceed the limit.
     if(state->kdf.magic == KDF_MAGIC)
@@ -884,6 +1025,7 @@ LIB_EXPORT UINT16 DRBG_Generate(
         LOG_FAILURE(FATAL_ERROR_INTERNAL);
         return FALSE;
     }
+#endif
     return randomSize;
 }
 
@@ -941,3 +1083,4 @@ LIB_EXPORT TPM_RC DRBG_Uninstantiate(
     memset(drbgState, 0, sizeof(DRBG_STATE));
     return TPM_RC_SUCCESS;
 }
+#endif

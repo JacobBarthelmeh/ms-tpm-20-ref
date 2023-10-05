@@ -71,6 +71,7 @@ int RegularCommandService(int PortNumber);
 //
 // Note that there is no way to specify the network interface in this implementation.
 int StartTcpServer(int PortNumber);
+int StartUartServer(void);
 
 //*** ReadBytes()
 // This function reads the indicated number of bytes ('NumBytes') into buffer

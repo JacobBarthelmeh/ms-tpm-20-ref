@@ -258,7 +258,7 @@ LIB_EXPORT BOOL BnDiv(
     return OK;
 }
 
-#  if ALG_RSA
+#  if ALG_RSA && !defined(NO_PRIME_GEN)
 //*** BnGcd()
 // Get the greatest common divisor of two numbers
 LIB_EXPORT BOOL BnGcd(bigNum   gcd,      // OUT: the common divisor
@@ -280,6 +280,7 @@ LIB_EXPORT BOOL BnGcd(bigNum   gcd,      // OUT: the common divisor
     WOLF_LEAVE();
     return OK;
 }
+#endif
 
 //***BnModExp()
 // Do modular exponentiation using bigNum values. The conversion from a mp_int to
@@ -306,6 +307,7 @@ LIB_EXPORT BOOL BnModExp(bigNum   result,    // OUT: the result
     return OK;
 }
 
+#if ALG_RSA || ALG_ECC
 //*** BnModInverse()
 // Modular multiplicative inverse
 LIB_EXPORT BOOL BnModInverse(bigNum result, bigConst number, bigConst modulus)

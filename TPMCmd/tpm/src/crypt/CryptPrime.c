@@ -36,6 +36,8 @@
 // This file contains the code for prime validation.
 
 #include "Tpm.h"
+
+#ifndef NO_PRIME_GEN
 #include "CryptPrime_fp.h"
 
 //#define CPRI_PRIME
@@ -365,3 +367,4 @@ BnGeneratePrimeForRSA(bigNum prime,      // IN/OUT: points to the BN that will g
 }
 
 #endif  // ALG_RSA
+#endif //NO_PRIME_GEN

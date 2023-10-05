@@ -45,6 +45,10 @@
 
 #if ALG_RSA
 
+#ifdef NO_PRIME_GEN
+#include "TpmRsaKey.h"
+#endif
+
 //**  Obligatory Initialization Functions
 
 //*** CryptRsaInit()
@@ -109,6 +113,7 @@ static BOOL PackExponent(TPM2B_PRIVATE_KEY_RSA* packed, privateExponent* Z)
     int    i;
     UINT16 primeSize = (UINT16)BITS_TO_BYTES(BnMsb(Z->P));
     UINT16 pS        = primeSize;
+    //
     //
     pAssert((primeSize * 5) <= sizeof(packed->t.buffer));
     packed->t.size = (primeSize * 5) + RSA_prime_flag;
@@ -302,6 +307,7 @@ static TPM_RC OaepEncode(
     RAND_STATE*  rand      // IN: the random number generator to use
 )
 {
+//#if ALG_OAEP
     INT32  padLen;
     INT32  dbSize;
     INT32  i;
@@ -373,6 +379,9 @@ static TPM_RC OaepEncode(
     padded->buffer[0] = 0x00;
 Exit:
     return retVal;
+//#else
+//    return TPM_RC_FAIL;
+//#endif
 }
 
 //*** OaepDecode()
@@ -399,6 +408,7 @@ static TPM_RC OaepDecode(
     TPM2B*       padded    // IN: the padded data
 )
 {
+//#if ALG_OAEP
     UINT32 i;
     BYTE   seedMask[MAX_DIGEST_SIZE];
     UINT32 hLen = CryptHashGetDigestSize(hashAlg);
@@ -468,8 +478,12 @@ Exit:
     if(retVal != TPM_RC_SUCCESS)
         dataOut->size = 0;
     return retVal;
+//#else
+//    return TPM_RC_FAIL;
+//#endif
 }
 
+#if ALG_RSAESS
 //*** PKCS1v1_5Encode()
 // This function performs the encoding for RSAES-PKCS1-V1_5-ENCRYPT as defined in
 // PKCS#1V2.1
@@ -546,7 +560,9 @@ static TPM_RC RSAES_Decode(TPM2B* message,  // OUT: the recovered message
     memcpy(message->buffer, &coded->buffer[pSize], coded->size - pSize);
     return TPM_RC_SUCCESS;
 }
+#endif //ALG_RSAES
 
+#if ALG_RSAPSS
 //*** CryptRsaPssSaltSize()
 // This function computes the salt size used in PSS. It is broken out so that
 // the X509 code can get the same value that is used by the encoding function in this
@@ -749,6 +765,7 @@ static TPM_RC PssDecode(
 Exit:
     return retVal;
 }
+#endif //ALG_RSAPSS
 
 //*** MakeDerTag()
 // Construct the DER value that is used in RSASSA
@@ -1065,9 +1082,11 @@ LIB_EXPORT TPM_RC CryptRsaEncrypt(
             // the modulus. If it is, then RSAEP() will catch it.
         }
         break;
+#if ALG_RSAES
         case TPM_ALG_RSAES:
             retVal = RSAES_PKCS1v1_5Encode(&cOut->b, dIn, rand);
             break;
+#endif
         case TPM_ALG_OAEP:
             retVal =
                 OaepEncode(&cOut->b, scheme->details.oaep.hashAlg, label, dIn, rand);
@@ -1129,9 +1148,11 @@ LIB_EXPORT TPM_RC CryptRsaDecrypt(
                     return TPM_RC_VALUE;
                 MemoryCopy2B(dOut, cIn, dOut->size);
                 break;
+#if ALG_RSAESS
             case TPM_ALG_RSAES:
                 retVal = RSAES_Decode(dOut, cIn);
                 break;
+#endif
             case TPM_ALG_OAEP:
                 retVal = OaepDecode(dOut, scheme->details.oaep.hashAlg, label, cIn);
                 break;
@@ -1326,9 +1347,11 @@ LIB_EXPORT TPM_RC CryptRsaGenerateKey(
     {
         if(e < 65537)
             ERROR_RETURN(TPM_RC_RANGE);
+#ifndef NO_PRIME_GEN
         // Check that e is prime
         if(!IsPrimeInt(e))
             ERROR_RETURN(TPM_RC_RANGE);
+#endif
     }
     BnSetWord(bnPubExp, e);
 
@@ -1349,6 +1372,7 @@ LIB_EXPORT TPM_RC CryptRsaGenerateKey(
 
     // Make sure that key generation has been tested
     TEST(TPM_ALG_NULL);
+#ifndef NO_PRIME_GEN
 
     // The prime is computed in P. When a new prime is found, Q is checked to
     // see if it is zero.  If so, P is copied to Q and a new P is found.
@@ -1438,6 +1462,33 @@ LIB_EXPORT TPM_RC CryptRsaGenerateKey(
             }
         }
     }
+#else
+    /* If no prime gen then use stored example key */
+    sensitive->sensitive.rsa.t.size = 33408;
+    memcpy(sensitive->sensitive.rsa.t.buffer, pri, (128*5));
+    publicArea->unique.rsa.t.size = 256;
+    memcpy(publicArea->unique.rsa.t.buffer, pub, sizeof(pub));
+    retVal = TPM_RC_SUCCESS;
+
+#endif
+
+    #if 0
+	{
+		int z;
+		printf("Generated public key = ");
+		for (z = 0; z < publicArea->unique.rsa.t.size; z++)
+			printf("0x%02X, ", publicArea->unique.rsa.t.buffer[z]);
+		printf("\n");
+	}
+
+	{
+		int z;
+		printf("Generated private key [%d]= ", sensitive->sensitive.rsa.t.size);
+		for (z = 0; z < (sensitive->sensitive.rsa.t.size - RSA_prime_flag); z++)
+			printf("0x%02X, ", sensitive->sensitive.rsa.t.buffer[z]);
+		printf("\n");
+	}
+    #endif
 Exit:
     return retVal;
 }

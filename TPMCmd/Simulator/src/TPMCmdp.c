@@ -51,6 +51,10 @@
 #elif defined(__unix__) || defined(__APPLE__)
 #  include "BaseTypes.h"  // on behalf of TpmFail_fp.h
 typedef int SOCKET;
+#elif defined(__MICROBLAZE__)
+#  include "BaseTypes.h"  // on behalf of TpmFail_fp.h
+#include "xuartns550.h"
+#define SOCKET XUartNs550*
 #else
 #  error "Unsupported platform."
 #endif
