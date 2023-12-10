@@ -218,20 +218,35 @@ static void CmdLineParser_Done(const char* programName)
 }
 #endif // !NO_SIMULATION_ARGS
 
+#ifdef DO_FUZZING
+extern unsigned char inputBuffer[16000];
+extern int inputBufferSz;
+#endif
+
+
 //*** main()
 // This is the main entry point for the simulator.
 // It registers the interface and starts listening for clients
+#ifdef DO_FUZZING
 int main(int argc, char* argv[])
 {
+    FILE*f = fopen(argv[1], "rb");
+    inputBufferSz = fread(inputBuffer, 1, 16000, f);
+    fclose(f);
+#else
+int main(int argc, char* argv[])
+{
+#endif
     bool manufacture = false;
     int  PortNum     = DEFAULT_TPM_PORT;
 
-    // Parse command line options
 #if defined(USE_UART_TRANSPORT) || defined(LINUX_UART)
-    manufacture = true;
+    (void) PortNum;
+    InitSystem();
 #endif
 
-#ifndef NO_SIMULATION_ARGS 
+#ifndef NO_SIMULATION_ARGS
+    // Parse command line options
     if(CmdLineParser_Init(argc, argv, 2))
     {
         if(CmdLineParser_IsOptPresent("?", "?")
@@ -283,6 +298,7 @@ int main(int argc, char* argv[])
             _plat__NVDisable(1);
             exit(1);
         }
+        #if 0
         // Coverage test - repeated manufacturing attempt
         if(TPM_Manufacture(0) != 1)
         {
@@ -294,6 +310,7 @@ int main(int argc, char* argv[])
         {
             exit(3);
         }
+        #endif
     }
     // Disable NV memory
     _plat__NVDisable(0);

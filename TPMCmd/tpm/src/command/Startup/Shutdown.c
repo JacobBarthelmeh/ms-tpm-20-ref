@@ -105,7 +105,9 @@ TPM2_Shutdown(Shutdown_In* in  // IN: input parameter list
 
     NV_SYNC_PERSISTENT(orderlyState);
 
+#if defined(USE_UART_TRANSPORT)
     controlFlowOff = 1; /* use acks for control flow */
+#endif
     return TPM_RC_SUCCESS;
 }
 #endif  // CC_Shutdown
