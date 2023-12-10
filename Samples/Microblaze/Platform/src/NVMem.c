@@ -536,7 +536,6 @@ static int NvSPICommit(void)
     u8 cipher[NV_MEMORY_SIZE + AES_BLOCK_SIZE];
     int ret;
 
-    xil_printf("NV SPI Commit\n\r");
     // If NV SPI is not available, return failure
     if(config == NULL)
         return 0;
@@ -614,7 +613,6 @@ static int NvSPICommit(void)
     }
 
     EnableUart();
-    xil_printf("NV SPI Commit return OK\n\r");
     return OK;
 }
 
