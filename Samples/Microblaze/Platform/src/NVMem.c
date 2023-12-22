@@ -72,6 +72,14 @@ static XSpi Spi;
 #define ATMEL_PAGE_SIZE   264  /* Page Size */
 //#define ATMEL_PAGE_SIZE   256  /* Page Size */
 
+#define AES_KEY_SIZE 32
+#define AES_IV_SIZE 12
+byte iv[]  = {
+   0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07,
+   0x08,0x09,0x0A,0x0B,0x0C,0x0D,0x0E,0x0F
+};
+
+
 #ifndef SDT
 #define SPI_DEVICE_ID   XPAR_SPI_0_DEVICE_ID
 #define INTC_DEVICE_ID  XPAR_INTC_0_DEVICE_ID
@@ -234,13 +242,6 @@ static int SPIReadID(int* id1, int* id2, int* id3)
 }
 
 
-#define AES_KEY_SIZE 16
-byte key[] = {
-};
-byte iv[]  = {
-};
-
-
 /* returns 0 on success, if 'set' is hot then the decrypted buffer is stored in
  * global s_NV */
 static int SPIDecrypt(const byte* in, int sz, byte* tag, int tagSz, int set)
@@ -255,7 +256,7 @@ static int SPIDecrypt(const byte* in, int sz, byte* tag, int tagSz, int set)
 
     wc_AesInit(&aes, NULL, INVALID_DEVID);
 
-    ret = wc_AesGcmSetKey(&aes, key, AES_KEY_SIZE);
+    ret = wc_AesGcmSetKey_ex(&aes, NULL, AES_KEY_SIZE, XSECURE_CSU_AES_KEY_SRC_DEV);
 #ifdef DEBUG_SPI
     xil_printf("ret of aes gcm set key = %d\n\r", ret);
     {
@@ -269,7 +270,7 @@ static int SPIDecrypt(const byte* in, int sz, byte* tag, int tagSz, int set)
 #endif
 
     if (ret == 0) {
-        ret = wc_AesGcmDecrypt(&aes, decrypted, in, sz, iv, sizeof(iv), tag,
+        ret = wc_AesGcmDecrypt(&aes, decrypted, in, sz, iv, AES_IV_SIZE, tag,
             tagSz, NULL, 0);
 #ifdef DEBUG_SPI
         xil_printf("\n\rresults of aes gcm decrypt = %d\n\r", ret);
@@ -463,9 +464,9 @@ static int SPIEncrypt(const byte* in, byte* out, int sz, byte* tag, int tagSz)
     int ret;
 
     wc_AesInit(&aes, NULL, INVALID_DEVID);
-    ret = wc_AesGcmSetKey(&aes, key, AES_KEY_SIZE);
+    ret = wc_AesGcmSetKey_ex(&aes, NULL, AES_KEY_SIZE, XSECURE_CSU_AES_KEY_SRC_DEV);
     if (ret == 0) {
-        ret = wc_AesGcmEncrypt(&aes, out, in, sz, iv, sizeof(iv), tag, tagSz,
+        ret = wc_AesGcmEncrypt(&aes, out, in, sz, iv, AES_IV_SIZE, tag, tagSz,
             NULL, 0);
     }
 
