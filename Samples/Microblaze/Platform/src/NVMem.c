@@ -74,6 +74,14 @@ static XSpi Spi;
 
 #define AES_KEY_SIZE 32
 #define AES_IV_SIZE 12
+#define AES_TAG_SIZE 16
+
+#error place OCM base address here instead of 0x0
+#define AES_ENCRYPT_OCM_PTR 0x0
+
+#define AES_DECRYPT_OCM_PTR (AES_ENCRYPT_OCM_PTR + NV_MEMORY_SIZE)
+#define AES_IV_OCM_PTR (AES_DECRYPT_OCM_PTR + AES_TAG_SIZE + NV_MEMORY_SIZE)
+
 byte iv[]  = {
    0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07,
    0x08,0x09,0x0A,0x0B,0x0C,0x0D,0x0E,0x0F
@@ -246,7 +254,6 @@ static int SPIReadID(int* id1, int* id2, int* id3)
  * global s_NV */
 static int SPIDecrypt(const byte* in, int sz, byte* tag, int tagSz, int set)
 {
-    u8 decrypted[NV_MEMORY_SIZE];
     int ret;
     Aes aes;
 
@@ -270,8 +277,12 @@ static int SPIDecrypt(const byte* in, int sz, byte* tag, int tagSz, int set)
 #endif
 
     if (ret == 0) {
-        ret = wc_AesGcmDecrypt(&aes, decrypted, in, sz, iv, AES_IV_SIZE, tag,
-            tagSz, NULL, 0);
+        memcpy((byte*)AES_DECRYPT_OCM_PTR, in, sz);
+        memcpy((byte*)AES_DECRYPT_OCM_PTR + sz, tag, tagSz);
+        memcpy((byte*)AES_IV_OCM_PTR, iv, AES_IV_SIZE);
+        ret = wc_AesGcmDecrypt(&aes, (byte*)AES_ENCRYPT_OCM_PTR,
+            (byte*)AES_DECRYPT_OCM_PTR, sz, (byte*)AES_IV_OCM_PTR, AES_IV_SIZE,
+            (byte*)AES_DECRYPT_OCM_PTR + sz, tagSz, NULL, 0);
 #ifdef DEBUG_SPI
         xil_printf("\n\rresults of aes gcm decrypt = %d\n\r", ret);
 #endif
@@ -279,7 +290,7 @@ static int SPIDecrypt(const byte* in, int sz, byte* tag, int tagSz, int set)
     wc_AesFree(&aes);
 
     if (set && ret == 0) {
-        memcpy(s_NV, decrypted, sz);
+        memcpy(s_NV, (byte*)AES_ENCRYPT_OCM_PTR, sz);
     }
 
     return ret;
@@ -332,6 +343,7 @@ static long NvSPIRead(int set)
 	    }
 
     #ifdef DEBUG_SPI
+        /* only print the first 1000 bytes for debugging */
         if (Index < 1000) {
             int z;
             xil_printf("NV SPI READ Page (index = %d / %d) : ", Index,
@@ -464,10 +476,18 @@ static int SPIEncrypt(const byte* in, byte* out, int sz, byte* tag, int tagSz)
     int ret;
 
     wc_AesInit(&aes, NULL, INVALID_DEVID);
-    ret = wc_AesGcmSetKey_ex(&aes, NULL, AES_KEY_SIZE, XSECURE_CSU_AES_KEY_SRC_DEV);
+    ret = wc_AesGcmSetKey_ex(&aes, NULL, AES_KEY_SIZE,
+        XSECURE_CSU_AES_KEY_SRC_DEV);
     if (ret == 0) {
-        ret = wc_AesGcmEncrypt(&aes, out, in, sz, iv, AES_IV_SIZE, tag, tagSz,
+        memcpy((byte*)AES_ENCRYPT_OCM_PTR, in, sz);
+        memcpy((byte*)AES_IV_OCM_PTR, iv, AES_IV_SIZE);
+        ret = wc_AesGcmEncrypt(&aes, (byte*)AES_DECRYPT_OCM_PTR,
+            (byte*)AES_ENCRYPT_OCM_PTR, sz, (byte*)AES_IV_OCM_PTR, AES_IV_SIZE,
+            tag, tagSz,
             NULL, 0);
+        if (ret == 0) {
+            memcpy(out, (byte*)AES_DECRYPT_OCM_PTR, sz);
+        }
     }
 
 #ifdef DEBUG_SPI
