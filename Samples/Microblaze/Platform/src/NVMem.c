@@ -35,8 +35,7 @@
 //** Description
 //
 //    This file contains the NV read and write access methods.  This implementation
-//    uses RAM/file and does not manage the RAM/file as NV blocks.
-//    The implementation may become more sophisticated over time.
+//    uses AT45 SPI on with Xilinx
 //
 
 //** Includes and Local
@@ -51,18 +50,18 @@ static int   s_NeedsManufacture = FALSE;
 #endif
 #if SPI_BACKED_NV
 #ifndef SDT
-#include "xintc.h"		/* Interrupt controller device driver */
+#include "xintc.h"        /* Interrupt controller device driver */
 #else
 #include "xinterrupt_wrap.h"
 #endif
 #include "xspi.h"
 #include "main.h"
-static int   s_NeedsManufacture = FALSE;
 #ifndef SDT
 static XIntc InterruptController;
 #endif
 static XSpi Spi;
 #endif
+static int   s_NeedsManufacture = FALSE;
 
 #include <wolfssl/options.h>
 #include <wolfssl/wolfcrypt/aes.h>
@@ -95,129 +94,129 @@ byte iv[]  = {
 #endif
 
 volatile int TransferInProgress;
-XSpi_Config *config = NULL;	/* Pointer to Configuration data */
+XSpi_Config *config = NULL;    /* Pointer to Configuration data */
 int ErrorCount;
 
 #ifndef SDT
 static int SetupInterruptSystem(XSpi *SpiPtr)
 {
 
-	int Status;
+    int Status;
 
-	Status = XIntc_Initialize(&InterruptController, INTC_DEVICE_ID);
-	if (Status != XST_SUCCESS) {
-		return XST_FAILURE;
-	}
+    Status = XIntc_Initialize(&InterruptController, INTC_DEVICE_ID);
+    if (Status != XST_SUCCESS) {
+        return XST_FAILURE;
+    }
 
-	/*
-	 * Connect a device driver handler that will be called when an interrupt
-	 * for the device occurs, the device driver handler performs the
-	 * specific interrupt processing for the device
-	 */
-	Status = XIntc_Connect(&InterruptController,
-			       SPI_INTR_ID,
-			       (XInterruptHandler)XSpi_InterruptHandler,
-			       (void *)SpiPtr);
-	if (Status != XST_SUCCESS) {
-		return XST_FAILURE;
-	}
+    /*
+     * Connect a device driver handler that will be called when an interrupt
+     * for the device occurs, the device driver handler performs the
+     * specific interrupt processing for the device
+     */
+    Status = XIntc_Connect(&InterruptController,
+                   SPI_INTR_ID,
+                   (XInterruptHandler)XSpi_InterruptHandler,
+                   (void *)SpiPtr);
+    if (Status != XST_SUCCESS) {
+        return XST_FAILURE;
+    }
 
-	/*
-	 * Start the interrupt controller such that interrupts are enabled for
-	 * all devices that cause interrupts, specific real mode so that
-	 * the SPI can cause interrupts through the interrupt controller.
-	 */
-	Status = XIntc_Start(&InterruptController, XIN_REAL_MODE);
-	if (Status != XST_SUCCESS) {
-		return XST_FAILURE;
-	}
-	XIntc_Enable(&InterruptController, SPI_INTR_ID);
+    /*
+     * Start the interrupt controller such that interrupts are enabled for
+     * all devices that cause interrupts, specific real mode so that
+     * the SPI can cause interrupts through the interrupt controller.
+     */
+    Status = XIntc_Start(&InterruptController, XIN_REAL_MODE);
+    if (Status != XST_SUCCESS) {
+        return XST_FAILURE;
+    }
+    XIntc_Enable(&InterruptController, SPI_INTR_ID);
 
 
-	/*
-	 * Initialize the exception table.
-	 */
-	Xil_ExceptionInit();
+    /*
+     * Initialize the exception table.
+     */
+    Xil_ExceptionInit();
 
-	/*
-	 * Register the interrupt controller handler with the exception table.
-	 */
-	Xil_ExceptionRegisterHandler(XIL_EXCEPTION_ID_INT,
-				     (Xil_ExceptionHandler) XIntc_InterruptHandler,
-				     &InterruptController);
+    /*
+     * Register the interrupt controller handler with the exception table.
+     */
+    Xil_ExceptionRegisterHandler(XIL_EXCEPTION_ID_INT,
+                     (Xil_ExceptionHandler) XIntc_InterruptHandler,
+                     &InterruptController);
 
-	/*
-	 * Enable non-critical exceptions.
-	 */
-	Xil_ExceptionEnable();
+    /*
+     * Enable non-critical exceptions.
+     */
+    Xil_ExceptionEnable();
 
-	return XST_SUCCESS;
+    return XST_SUCCESS;
 }
 #endif
 
 void SpiHandler(void *CallBackRef, u32 StatusEvent, unsigned int ByteCount)
 {
-	/*
-	 * Indicate the transfer on the SPI bus is no longer in progress
-	 * regardless of the status event.
-	 */
-	TransferInProgress = FALSE;
+    /*
+     * Indicate the transfer on the SPI bus is no longer in progress
+     * regardless of the status event.
+     */
+    TransferInProgress = FALSE;
 
-	/*
-	 * If the event was not transfer done, then track it as an error.
-	 */
-	if (StatusEvent != XST_SPI_TRANSFER_DONE) {
-		ErrorCount++;
-	}
+    /*
+     * If the event was not transfer done, then track it as an error.
+     */
+    if (StatusEvent != XST_SPI_TRANSFER_DONE) {
+        ErrorCount++;
+    }
 }
 
 
 static int SpiAtmelFlashWaitForFlashNotBusy(XSpi *SpiPtr)
 {
-	u8 StatusReg;
+    u8 StatusReg;
     u8 WriteBuffer[2];
     u8 ReadBuffer[2];
 
-	/*
-	 * Prepare the Write Buffer.
-	 */
-	WriteBuffer[0] = 0xD7; /* ATMEL_COMMAND_STATUSREG_READ */
-	WriteBuffer[1] = 0xFF;
+    /*
+     * Prepare the Write Buffer.
+     */
+    WriteBuffer[0] = 0xD7; /* ATMEL_COMMAND_STATUSREG_READ */
+    WriteBuffer[1] = 0xFF;
 
-	/*
-	 * Prepare the Read Buffer.
-	 */
-	ReadBuffer[0] = 0;//ATMEL_INITBYTE;
-	ReadBuffer[1] = 0;//ATMEL_INITBYTE;
+    /*
+     * Prepare the Read Buffer.
+     */
+    ReadBuffer[0] = 0;//ATMEL_INITBYTE;
+    ReadBuffer[1] = 0;//ATMEL_INITBYTE;
 
-	while (1) {
+    while (1) {
 
-		/*
-		 * Transmit the data.
-		 */
-		TransferInProgress = TRUE;
-		XSpi_Transfer(&Spi, WriteBuffer, ReadBuffer,
-			      0x2);//ATMEL_STATUS_READ_BYTES);
+        /*
+         * Transmit the data.
+         */
+        TransferInProgress = TRUE;
+        XSpi_Transfer(&Spi, WriteBuffer, ReadBuffer,
+                  0x2);//ATMEL_STATUS_READ_BYTES);
 
-		/*
-		 * Wait for the transmission to be complete and
-		 * check if there are any errors in the transaction.
-		 */
-		while (TransferInProgress);
-		if (ErrorCount != 0) {
-			ErrorCount = 0;
-			return XST_FAILURE;
-		}
+        /*
+         * Wait for the transmission to be complete and
+         * check if there are any errors in the transaction.
+         */
+        while (TransferInProgress);
+        if (ErrorCount != 0) {
+            ErrorCount = 0;
+            return XST_FAILURE;
+        }
 
-		StatusReg = ReadBuffer[1];
+        StatusReg = ReadBuffer[1];
 
         /* mask and check the flash SR is ready bit */
-		if ((StatusReg & 0x80)) {
-			break;
-		}
-	}
+        if ((StatusReg & 0x80)) {
+            break;
+        }
+    }
 
-	return XST_SUCCESS;
+    return XST_SUCCESS;
 }
 
 
@@ -231,11 +230,11 @@ static int SPIReadID(int* id1, int* id2, int* id3)
     WriteBuffer[0]     = 0x9F;
     TransferInProgress = TRUE;
     XSpi_Transfer(&Spi, WriteBuffer, id, 4);
-	while (TransferInProgress);
-	if (ErrorCount != 0) {
-	    ErrorCount = 0;
-	    return XST_FAILURE;
-	}
+    while (TransferInProgress);
+    if (ErrorCount != 0) {
+        ErrorCount = 0;
+        return XST_FAILURE;
+    }
 
     if (id1) {
         *id1 = id[0];
@@ -296,9 +295,10 @@ static int SPIDecrypt(const byte* in, int sz, byte* tag, int tagSz, int set)
     return ret;
 }
 
+
 static long NvSPIRead(int set)
 {
-	u16 Index;
+    u16 Index;
     u8 ReadBfrPtr[NV_MEMORY_SIZE + AES_BLOCK_SIZE];
     u8 ReadPagePtr[ATMEL_PAGE_SIZE + 4];
     u8 WriteBuffer[4];
@@ -315,10 +315,10 @@ static long NvSPIRead(int set)
             Index += ATMEL_PAGE_SIZE) {
 
         /* Read a page at a time using the default 264 page address */
-	    WriteBuffer[0] = 0x03; /* ATMEL_COMMAND_READ */
-	    WriteBuffer[1] = (u8) (Page >> 7);
-	    WriteBuffer[2] = (u8) ((Page << 1) | (Ofst >> 8));
-	    WriteBuffer[3] = (u8) (Ofst & 0xFF);
+        WriteBuffer[0] = 0x03; /* ATMEL_COMMAND_READ */
+        WriteBuffer[1] = (u8) (Page >> 7);
+        WriteBuffer[2] = (u8) ((Page << 1) | (Ofst >> 8));
+        WriteBuffer[3] = (u8) (Ofst & 0xFF);
         Page++;
 
         #ifdef DEBUG_SPI
@@ -332,15 +332,15 @@ static long NvSPIRead(int set)
         }
         #endif
 
-	    TransferInProgress = TRUE;
-	    XSpi_Transfer(&Spi, WriteBuffer, ReadPagePtr,
-		      ATMEL_PAGE_SIZE + 4);
+        TransferInProgress = TRUE;
+        XSpi_Transfer(&Spi, WriteBuffer, ReadPagePtr,
+              ATMEL_PAGE_SIZE + 4);
 
-	    while (TransferInProgress);
-	    if (ErrorCount != 0) {
-		    ErrorCount = 0;
-		    return XST_FAILURE;
-	    }
+        while (TransferInProgress);
+        if (ErrorCount != 0) {
+            ErrorCount = 0;
+            return XST_FAILURE;
+        }
 
     #ifdef DEBUG_SPI
         /* only print the first 1000 bytes for debugging */
@@ -360,7 +360,7 @@ static long NvSPIRead(int set)
         ReadBfrPtr + NV_MEMORY_SIZE, AES_BLOCK_SIZE, set);
 
     EnableUart();
-	return ret;
+    return ret;
 }
 
 
@@ -369,17 +369,17 @@ XSpi* NvInitSPI()
 {
     int Status;
 
-    config = XSpi_LookupConfig(XPAR_MB0_AXI_QUAD_SPI_0_DEVICE_ID);
-	if (config == NULL) {
+    config = XSpi_LookupConfig(XPAR_SPI_0_DEVICE_ID);
+    if (config == NULL) {
     #ifdef DEBUG_SPI
         xil_printf("config device not found\n\r");
     #endif
-		return NULL;
-	}
+        return NULL;
+    }
 
-	Status = XSpi_CfgInitialize(&Spi, config,
-				    config->BaseAddress);
-	if (Status != XST_SUCCESS) {
+    Status = XSpi_CfgInitialize(&Spi, config,
+                    config->BaseAddress);
+    if (Status != XST_SUCCESS) {
         if (Status == XST_DEVICE_IS_STARTED) {
         #ifdef DEBUG_SPI
             xil_printf("Device was already started\n\r");
@@ -389,8 +389,8 @@ XSpi* NvInitSPI()
     #ifdef DEBUG_SPI
         xil_printf("config initialize failed\n\r");
     #endif
-		return NULL;
-	}
+        return NULL;
+    }
 #ifdef DEBUG_SPI
     xil_printf("SPI initialized, base address = %X\n\r", config->BaseAddress);
 #endif
@@ -406,9 +406,9 @@ XSpi* NvInitSPI()
 static int NvSPIOpen(void)
 {
     int ret = 0;
-	int Status;
-	u32 Index;
-	u32 Address;
+    int Status;
+    u32 Index;
+    u32 Address;
 
 #ifdef DEBUG_SPI
     xil_printf("Calling NvSPIOpen()\n\r");
@@ -417,41 +417,41 @@ static int NvSPIOpen(void)
         return XST_FAILURE;
     }
 
-	/*
-	 * Setup the handler for the SPI that will be called from the interrupt
-	 * context when an SPI status occurs, specify a pointer to the SPI
-	 * driver instance as the callback reference so the handler is able to
-	 * access the instance data.
-	 */
-	XSpi_SetStatusHandler(&Spi, &Spi, (XSpi_StatusHandler)SpiHandler);
+    /*
+     * Setup the handler for the SPI that will be called from the interrupt
+     * context when an SPI status occurs, specify a pointer to the SPI
+     * driver instance as the callback reference so the handler is able to
+     * access the instance data.
+     */
+    XSpi_SetStatusHandler(&Spi, &Spi, (XSpi_StatusHandler)SpiHandler);
 
-	/*
-	 * Set the SPI device as a master and in manual slave select mode such
-	 * that the slave select signal does not toggle for every byte of a
-	 * transfer, this must be done before the slave select is set.
-	 */
-	Status = XSpi_SetOptions(&Spi, XSP_MASTER_OPTION |
-				 XSP_MANUAL_SSELECT_OPTION |
-				 XSP_CLK_PHASE_1_OPTION |
-				 XSP_CLK_ACTIVE_LOW_OPTION);
-	if (Status != XST_SUCCESS) {
-		return XST_FAILURE;
-	}
+    /*
+     * Set the SPI device as a master and in manual slave select mode such
+     * that the slave select signal does not toggle for every byte of a
+     * transfer, this must be done before the slave select is set.
+     */
+    Status = XSpi_SetOptions(&Spi, XSP_MASTER_OPTION |
+                 XSP_MANUAL_SSELECT_OPTION |
+                 XSP_CLK_PHASE_1_OPTION |
+                 XSP_CLK_ACTIVE_LOW_OPTION);
+    if (Status != XST_SUCCESS) {
+        return XST_FAILURE;
+    }
 
-	/*
-	 * Select the slave on the SPI bus so that the Atmel Flash device can be
-	 * read and written using the SPI bus.
-	 */
-	Status = XSpi_SetSlaveSelect(&Spi, 0x01);
-	if (Status != XST_SUCCESS) {
-		return XST_FAILURE;
-	}
+    /*
+     * Select the slave on the SPI bus so that the Atmel Flash device can be
+     * read and written using the SPI bus.
+     */
+    Status = XSpi_SetSlaveSelect(&Spi, 0x01);
+    if (Status != XST_SUCCESS) {
+        return XST_FAILURE;
+    }
 
-	/*
-	 * Start the SPI driver so that interrupts and the device are enabled.
-	 */
-	Status = XSpi_Start(&Spi);
-	if (Status != XST_SUCCESS && Status != XST_DEVICE_IS_STARTED) {
+    /*
+     * Start the SPI driver so that interrupts and the device are enabled.
+     */
+    Status = XSpi_Start(&Spi);
+    if (Status != XST_SUCCESS && Status != XST_DEVICE_IS_STARTED) {
         xil_printf("XSpi_Start did not return XST_SUCCESS, %d\r\n", Status);
         ret = -1;
     }
@@ -516,24 +516,24 @@ static int SPIErase(void)
     u32 Page;
 
     for (Page = 0; (Page * ATMEL_PAGE_SIZE) < NV_MEMORY_SIZE + 16; Page++) {
-	    WriteBuffer[0] = 0x81; /* ATMEL_COMMAND_PAGE_ERASE */;
-	    WriteBuffer[1] = (u8) (Page >> 7);
-	    WriteBuffer[2] = (u8) (Page << 1);
-	    WriteBuffer[3] = 0xFF; /* padding */
+        WriteBuffer[0] = 0x81; /* ATMEL_COMMAND_PAGE_ERASE */;
+        WriteBuffer[1] = (u8) (Page >> 7);
+        WriteBuffer[2] = (u8) (Page << 1);
+        WriteBuffer[3] = 0xFF; /* padding */
 
         TransferInProgress = TRUE;
-	    XSpi_Transfer(&Spi, WriteBuffer, NULL, 0x4);
+        XSpi_Transfer(&Spi, WriteBuffer, NULL, 0x4);
 
-	    while (TransferInProgress);
-	    if (ErrorCount != 0) {
-		    ErrorCount = 0;
-		    return -1;
-	    }
+        while (TransferInProgress);
+        if (ErrorCount != 0) {
+            ErrorCount = 0;
+            return -1;
+        }
 
-    	Status = SpiAtmelFlashWaitForFlashNotBusy(&Spi);
-    	if (Status != XST_SUCCESS) {
-    		return -1;
-    	}
+        Status = SpiAtmelFlashWaitForFlashNotBusy(&Spi);
+        if (Status != XST_SUCCESS) {
+            return -1;
+        }
     }
 
     return ret;
@@ -548,8 +548,8 @@ static int SPIErase(void)
 static int NvSPICommit(void)
 {
     int OK = 1;
-	u8 WriteCmd[5];
-	int Status;
+    u8 WriteCmd[5];
+    int Status;
     u8 WriteBuffer[NV_MEMORY_SIZE + AES_BLOCK_SIZE + 4];
     u32 Page = 0;
     u32 Ofst = 0;
@@ -586,7 +586,7 @@ static int NvSPICommit(void)
 
     for (ofst = 0; ofst < NV_MEMORY_SIZE + 16;) {
         int toCopy = ATMEL_PAGE_SIZE;
-	    u16 idx = 0;
+        u16 idx = 0;
 
         /* Set upper bound on amount of data to copy */
         if (toCopy > (NV_MEMORY_SIZE + 16) - ofst) {
@@ -594,11 +594,11 @@ static int NvSPICommit(void)
         }
 
         /* Setting address based on default 264 page size */
-    	WriteBuffer[idx++] = 0x82; /* ATMEL_COMMAND_WRITE */
-    	WriteBuffer[idx++] = (u8) (Page >> 7);
-    	WriteBuffer[idx++] = (u8) ((Page << 1) | (Ofst >> 8));
-    	WriteBuffer[idx++] = (u8) (Ofst & 0xFF);
-    	Page++;
+        WriteBuffer[idx++] = 0x82; /* ATMEL_COMMAND_WRITE */
+        WriteBuffer[idx++] = (u8) (Page >> 7);
+        WriteBuffer[idx++] = (u8) ((Page << 1) | (Ofst >> 8));
+        WriteBuffer[idx++] = (u8) (Ofst & 0xFF);
+        Page++;
 
         /* append data to be written to SPI device */
         memcpy(WriteBuffer + idx, cipher + ofst, toCopy);
@@ -618,16 +618,16 @@ static int NvSPICommit(void)
         TransferInProgress = TRUE;
         XSpi_Transfer(&Spi, WriteBuffer, NULL, 4 + toCopy);
 
-    	while (TransferInProgress);
-    	if (ErrorCount != 0) {
-    		ErrorCount = 0;
-    		return XST_FAILURE;
-    	}
+        while (TransferInProgress);
+        if (ErrorCount != 0) {
+            ErrorCount = 0;
+            return XST_FAILURE;
+        }
 
-    	Status = SpiAtmelFlashWaitForFlashNotBusy(&Spi);
-    	if (Status != XST_SUCCESS) {
-    		return XST_FAILURE;
-    	}
+        Status = SpiAtmelFlashWaitForFlashNotBusy(&Spi);
+        if (Status != XST_SUCCESS) {
+            return XST_FAILURE;
+        }
 
         /* increase offset and loop to write next page */
         ofst += toCopy;
@@ -717,8 +717,10 @@ LIB_EXPORT int _plat__NVEnable(
 LIB_EXPORT void _plat__NVDisable(int delete  // IN: If TRUE, delete the NV contents.
 )
 {
+#if SPI_BACKED_NV
     if (delete)
         (void)SPIErase();
+#endif
     return;
 }
 
@@ -734,8 +736,12 @@ LIB_EXPORT int _plat__IsNvAvailable(void)
     // NV is not available if the TPM is in failure mode
     if(!s_NvIsAvailable)
         retVal = 1;
-    else
+    else {
+#if SPI_BACKED_NV
         retVal = (config == NULL);
+#endif
+    }
+
     return retVal;
 }
 
@@ -822,7 +828,11 @@ LIB_EXPORT void _plat__NvMemoryMove(
 //  non-0   NV write fail
 LIB_EXPORT int _plat__NvCommit(void)
 {
+#if SPI_BACKED_NV
     return (NvSPICommit() ? 0 : 1);
+#else
+    return 0;
+#endif
 }
 
 //***_plat__SetNvAvail()
