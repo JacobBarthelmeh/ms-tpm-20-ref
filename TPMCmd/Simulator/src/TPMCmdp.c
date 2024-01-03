@@ -52,9 +52,16 @@
 #  include "BaseTypes.h"  // on behalf of TpmFail_fp.h
 typedef int SOCKET;
 #elif defined(__MICROBLAZE__)
+//#define USE_UARTLITE
 #  include "BaseTypes.h"  // on behalf of TpmFail_fp.h
+
+#ifdef USE_UARTLITE
+#include "xuartlite.h"
+#define SOCKET XUartLite*
+#else
 #include "xuartns550.h"
 #define SOCKET XUartNs550*
+#endif
 #else
 #  error "Unsupported platform."
 #endif

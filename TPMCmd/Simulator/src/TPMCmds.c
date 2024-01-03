@@ -54,8 +54,17 @@
 #  define _strcmpi strcasecmp
 typedef int SOCKET;
 #elif defined(__MICROBLAZE__)
-#include "xuartns550.h"
-#define SOCKET XUartNs550*
+//#define USE_UARTLITE
+
+#ifdef USE_UARTLITE
+	#include "xuartlite.h"
+	#define SOCKET XUartLite*
+#else
+	#include "xuartns550.h"
+	#define SOCKET XUartNs550*
+#endif
+#include "main.h"
+
 #else
 #  error "Unsupported platform."
 #endif
@@ -242,6 +251,11 @@ int main(int argc, char* argv[])
 
 #if defined(USE_UART_TRANSPORT) || defined(LINUX_UART)
     (void) PortNum;
+#if SPI_BACKED_NV
+    manufacture = false; /* load up NV from SPI */
+#else
+    manufacture = true;
+#endif
     InitSystem();
 #endif
 
